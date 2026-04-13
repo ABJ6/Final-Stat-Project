@@ -1,0 +1,147 @@
+---
+title: "Project Part 1"
+author: "Armaan Abbas"
+fontsize: 12pt
+geometry: margin=1in
+urlcolor: black
+output: pdf_document
+header-includes:
+- \usepackage{setspace}
+- \onehalfspacing
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, highlight = FALSE, message = FALSE, warning = FALSE)
+```
+
+```{r load-data, echo=FALSE, warning=FALSE, message=FALSE}
+## Load required packages
+library(nycflights13)
+library(tidyverse)
+library(knitr)
+
+## Filter to United Airlines (UA) and American Airlines (AA) flights
+## departing from JFK with non-missing arrival delay.
+flights_jfk <- flights %>%
+  filter(origin == "JFK",
+         carrier %in% c("UA", "AA"),
+         !is.na(arr_delay))
+
+## Save filtered data to CSV for repository inclusion and reproducibility.
+write.csv(flights_jfk, "flights_jfk_ua_aa.csv", row.names = FALSE)
+```
+
+**Repository URL:** [https://github.com/UVA-STAT3080/student-Sp26](https://github.com/UVA-STAT3080/student-Sp26)
+
+## Introduction
+
+Flight delays are a persistent frustration for air travelers and a significant operational cost for airlines. Understanding the distribution of arrival delays — and whether they differ meaningfully across carriers — can inform travelers' choices and prompt targeted operational improvements by airlines.
+
+This report investigates arrival delays for flights departing from John F. Kennedy International Airport (JFK) in New York City during 2013. Specifically, it focuses on two of the largest US carriers operating at JFK: United Airlines (UA) and American Airlines (AA). Three preliminary research questions guide the exploratory analysis:
+
+1. What is the typical arrival delay for UA and AA flights departing from JFK?
+2. What proportion of flights from each carrier arrive late (arrival delay $>$ 0 minutes)?
+3. How variable are arrival delays for each carrier?
+
+## Data Summary
+
+The data are drawn from the `nycflights13` R package, which re-hosts records originally published by the **Bureau of Transportation Statistics (BTS)**, a US government agency within the Department of Transportation. The dataset constitutes the **population** of all commercial flights departing from three New York City area airports (JFK, LGA, EWR) in calendar year 2013, as reported by carriers to the BTS. For this analysis, records were filtered to flights departing from JFK operated by UA or AA only. Flights with missing arrival delay values ($n =$ 65 across both carriers) were removed, as these correspond to cancelled flights and do not reflect delay lengths.
+
+The key variable of interest is `arr_delay`: the difference in minutes between the actual and scheduled arrival time, where positive values indicate late arrivals and negative values indicate early arrivals.
+
+**Potential issues:** Because the data cover only 2013, conclusions may not generalize to other years, particularly given year-to-year variation in weather events and airline schedules. Extreme outliers are present due to irregular events (severe weather, mechanical issues) and may influence mean-based summaries. Additionally, the data reflect only JFK departures and may not represent each carrier's national on-time performance.
+
+The data are appropriate for answering the research questions because they provide exact arrival delay times (in minutes) for both carriers operating from the same origin airport in the same year, allowing a direct, controlled comparison.
+
+## Exploratory Analysis
+
+```{r summary-table}
+## Numerical summary: descriptive statistics by carrier
+summary_stats <- flights_jfk %>%
+  group_by(carrier) %>%
+  summarize(n       = n(),
+            Mean    = round(mean(arr_delay), 1),
+            Median  = median(arr_delay),
+            SD      = round(sd(arr_delay), 1),
+            IQR     = IQR(arr_delay),
+            Min     = min(arr_delay),
+            Max     = max(arr_delay))
+
+kable(summary_stats,
+      col.names = c("Carrier", "n", "Mean", "Median", "SD", "IQR", "Min", "Max"),
+      caption   = "Descriptive statistics for arrival delay (minutes) by carrier, JFK 2013.",
+      align     = "lrrrrrrr")
+```
+
+```{r prop-table}
+## Numerical summary: proportion of flights with a late arrival by carrier
+prop_stats <- flights_jfk %>%
+  group_by(carrier) %>%
+  summarize(`Proportion Late (delay > 0)` = round(mean(arr_delay > 0), 3),
+            `Proportion Early (delay < 0)` = round(mean(arr_delay < 0), 3))
+
+kable(prop_stats,
+      col.names = c("Carrier", "Proportion Late (delay > 0)", "Proportion Early (delay < 0)"),
+      caption   = "Proportion of flights arriving late and early by carrier, JFK 2013.",
+      align     = "lrr")
+```
+
+```{r boxplot, fig.height=3.8, fig.cap="Side-by-side boxplots of arrival delay (minutes) by carrier for JFK departures in 2013. Horizontal lines inside each box show the median; boxes span the IQR. Outliers beyond 1.5 $\\times$ IQR are plotted as faint points. Median values are labeled above each box."}
+## Compute medians for labeling on the plot
+medians <- flights_jfk %>%
+  group_by(carrier) %>%
+  summarize(med = median(arr_delay))
+
+ggplot(flights_jfk, aes(x = carrier, y = arr_delay, fill = carrier)) +
+  geom_boxplot(outlier.alpha = 0.05, outlier.size = 0.6) +
+  geom_text(data = medians,
+            aes(x = carrier, y = med, label = paste0("Median = ", med)),
+            vjust = -0.6, size = 3, inherit.aes = FALSE) +
+  scale_fill_manual(values = c("AA" = "#4878CF", "UA" = "#D65F5F")) +
+  labs(title = "Arrival Delay by Carrier, JFK 2013",
+       x     = "Carrier (AA = American Airlines, UA = United Airlines)",
+       y     = "Arrival Delay (minutes)",
+       fill  = "Carrier") +
+  theme_bw() +
+  theme(legend.position = "none")
+```
+
+```{r density, fig.height=3.5, fig.cap="Smoothed density curves of arrival delay (minutes) for each carrier, JFK 2013. The x-axis is clipped to $[-80, 200]$ minutes to exclude rare extreme outliers and improve readability; values outside this range represent less than 1\\% of flights."}
+ggplot(flights_jfk, aes(x = arr_delay, fill = carrier, color = carrier)) +
+  geom_density(alpha = 0.35, linewidth = 0.8) +
+  coord_cartesian(xlim = c(-80, 200)) +
+  scale_fill_manual(values  = c("AA" = "#4878CF", "UA" = "#D65F5F"),
+                    labels  = c("AA" = "American (AA)", "UA" = "United (UA)")) +
+  scale_color_manual(values = c("AA" = "#4878CF", "UA" = "#D65F5F"),
+                     labels = c("AA" = "American (AA)", "UA" = "United (UA)")) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
+  labs(title  = "Distribution of Arrival Delay by Carrier, JFK 2013",
+       x      = "Arrival Delay (minutes)",
+       y      = "Density",
+       fill   = "Carrier",
+       color  = "Carrier") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+## Conclusions
+
+Table 1 shows that both carriers most commonly arrive early or on-time: both medians are negative, meaning that the "typical" JFK flight for both AA and UA lands before its scheduled arrival time. However, the mean delay is positive for both carriers due to right-skewed distributions driven by a relatively small number of severely late flights, as visible in Figure 1 and Figure 2. This skewness makes the median a more representative measure of the typical passenger's experience than the mean.
+
+The boxplots in Figure 1 show that UA has a noticeably larger IQR than AA (Table 1), indicating that United's arrival times are more variable. While the medians are similar, the longer upper tail for UA visible in Figure 2 suggests that UA flights are more prone to severe delays when delays do occur.
+
+Table 2 reveals that roughly 40–45% of flights for both carriers arrive late. This near-symmetry around zero is consistent with the near-zero medians in Table 1.
+
+Taken together, these summaries suggest that while neither carrier is dramatically worse than the other on the typical flight, United Airlines may subject passengers to more extreme delays in the worst cases, and that arrival delay distributions for both carriers are markedly right-skewed. Part 2 will formally test whether the difference in arrival delay distributions between UA and AA is statistically significant.
+
+\newpage
+
+## References
+
+1. Hadley Wickham (2021). *nycflights13: Flights that Departed NYC in 2013*. R package version 1.0.2. Data sourced from the US Bureau of Transportation Statistics (BTS). \newline <https://CRAN.R-project.org/package=nycflights13>
+
+2. Bureau of Transportation Statistics. *Airline On-Time Statistics and Delay Causes*. US Department of Transportation. \newline <https://www.transtats.bts.gov/OT_Delay/OT_DelayCause1.asp>
+
+3. H. Wickham (2016). *ggplot2: Elegant Graphics for Data Analysis*. Springer-Verlag New York.
+
+4. AI attribution: Claude (Anthropic) was used to assist in drafting and structuring portions of this report and code, in accordance with UVA's guidelines on AI use.
